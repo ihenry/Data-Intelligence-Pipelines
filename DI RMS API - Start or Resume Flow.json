@@ -1,0 +1,106 @@
+{
+	"properties": {},
+	"description": "DI RMS API - Start or Resume Flow",
+	"processes": {
+		"openapiclient1": {
+			"component": "com.sap.openapi.client",
+			"metadata": {
+				"label": "Call Flow API",
+				"x": 327,
+				"y": 12,
+				"height": 80,
+				"width": 120,
+				"generation": 1,
+				"ui": "dynpath",
+				"config": {
+					"connectionType": "connection",
+					"connection": {
+						"configurationType": "Configuration Manager",
+						"connectionID": "DI_SELF"
+					},
+					"basePath": "/app/rms/api/dt/v1/replicationflows/${flowname}",
+					"method": "PUT",
+					"responseHeadersFormat": "single value",
+					"useCsrfToken": true,
+					"maxConcurrency": 8
+				}
+			}
+		},
+		"messagegenerator1": {
+			"component": "com.sap.util.dataMessageGenerator",
+			"metadata": {
+				"label": "Set Header",
+				"x": 133,
+				"y": 12,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"generation": 1,
+				"config": {
+					"script": "var counter = 0;\n\nsetHeader = function() {\n   \n    var msg = {};\n    msg.Attributes = {};\n    msg.Attributes[\"openapi.header_params.x-requested-with\"] = \"Fetch\";\n    msg.Attributes[\"openapi.query_params.requestType\"] = \"RUN_OR_RESUME_ALL_INACTIVE_TASKS\";\n\n    msg.Body = \"Start\";\n    return msg;\n};\n\n\nvar timerId = $.addTimer(\"500ms\",do1Tick);\n\nfunction do1Tick(ctx) {\n    $.output(setHeader());\n    counter++;\n    if (counter == 1)\n    $.removeTimer(timerId);\n}"
+				}
+			}
+		},
+		"javascriptv2operator1": {
+			"component": "com.sap.system.jsengine.v2",
+			"metadata": {
+				"label": "Log API Output",
+				"x": 500,
+				"y": 12,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"generation": 1,
+				"config": {
+					"script": "$.setPortCallback(\"input\", onInput)\n\nfunction isByteArray(data) {\n    return (typeof data === 'object' && Array.isArray(data) \n        && data.length > 0 && typeof data[0] === 'number')\n}\n\nfunction onInput(ctx,s) {\n    var inbody = s.Body;\n    var inHead = s.Attributes;\n    inHead = JSON.stringify(inHead);\n    \n    if (isByteArray(inbody)) {\n        inbody = String.fromCharCode.apply(null, inbody);\n    }\n    \n     $.log(\"openapi.status_code, expecting 202, received \" + s.Attributes[\"openapi.status_code\"], $.logSeverity.INFO, \"10001\");\n     $.log(\"Message Headers Response \" + inHead,  $.logSeverity.INFO, \"10002\", inHead);\n     $.log(\"Message Body Response \" + inbody, $.logSeverity.INFO, \"20000\", inbody);\n\n    // check API status reponse to stop or abort pipeline\n     if (s.Attributes[\"openapi.status_code\"] === '202') {\n        $.done();\n     } else {\n        $.fail(\"openapi.status_code, expecting 202, received \" + s.Attributes[\"openapi.status_code\"] + \" response body \" + inbody);\n     }\n         \n}"
+				},
+				"additionalinports": [
+					{
+						"name": "input",
+						"type": "message"
+					}
+				],
+				"additionaloutports": [
+					{
+						"name": "output",
+						"type": "message"
+					}
+				]
+			}
+		}
+	},
+	"groups": [],
+	"connections": [
+		{
+			"metadata": {
+				"points": "451,52 495,52"
+			},
+			"src": {
+				"port": "out",
+				"process": "openapiclient1"
+			},
+			"tgt": {
+				"port": "input",
+				"process": "javascriptv2operator1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "257,52 322,52"
+			},
+			"src": {
+				"port": "output",
+				"process": "messagegenerator1"
+			},
+			"tgt": {
+				"port": "in",
+				"process": "openapiclient1"
+			}
+		}
+	],
+	"inports": {},
+	"outports": {},
+	"metadata": {
+		"generation": 1
+	}
+}
