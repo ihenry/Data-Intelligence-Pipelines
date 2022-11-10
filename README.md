@@ -1,2 +1,2 @@
 # Data Intelligence Pipelines
-SAP Data Intelligence Pipeline
+Sample SAP Data Intelligence Pipelines
