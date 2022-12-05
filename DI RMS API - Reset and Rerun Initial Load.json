@@ -1,0 +1,123 @@
+{
+	"properties": {},
+	"metadata": {
+		"generation": 1
+	},
+	"description": "",
+	"processes": {
+		"openapiclient1": {
+			"component": "com.sap.openapi.client",
+			"metadata": {
+				"label": "Call API",
+				"x": 65,
+				"y": -48,
+				"height": 80,
+				"width": 120,
+				"generation": 1,
+				"ui": "dynpath",
+				"config": {
+					"connectionType": "connection",
+					"connection": {
+						"configurationType": "Configuration Manager",
+						"connectionID": "DI_SELF"
+					},
+					"basePath": "",
+					"method": "GET",
+					"responseHeadersFormat": "single value",
+					"useCsrfToken": true,
+					"maxConcurrency": 8,
+					"oauth2TokenFetchUseProxy": false,
+					"timeout": 300000
+				}
+			}
+		},
+		"blankjsoperator1": {
+			"component": "com.sap.system.jsoperator",
+			"metadata": {
+				"label": "RMS API Controller",
+				"x": -135,
+				"y": -48,
+				"height": 80,
+				"width": 120,
+				"extensible": true,
+				"generation": 1,
+				"config": {
+					"script": "$.setPortCallback(\"input\",onInput);\nvar flow = $.config.getString(\"flowname\");\nvar counter = 0;\nvar timerId = $.addTimer(\"3s\",do1Tick);\nvar APIPath;\nvar RMSCleanUP = 0;\nvar RMSLoadStarted = 0;\n\n\nfunction isByteArray(data) {\n    return (typeof data === 'object' && Array.isArray(data) \n        && data.length > 0 && typeof data[0] === 'number');\n}\n\n\nfunction RMSClean () {\n    $.log(counter + \" RMS Clean Up Started \"+ flow, $.logSeverity.INFO, \"50000\");\n    var msg = {};\n    msg.Attributes = {};\n    msg.Attributes[\"openapi.method\"]=\"DELETE\";\n    msg.Attributes[\"openapi.header_params.x-requested-with\"] = \"Fetch\";\n    msg.Attributes[\"openapi.query_params.runtimeOnly\"] = \"true\";\n//    msg.Attributes[\"openapi.path_pattern\"] = \"/app/rms/api/dt/v1/replicationflows/OPTANE_S4_CDS_DL_FULL\";\n    msg.Attributes[\"openapi.path_pattern\"] = \"/app/rms/api/dt/v1/replicationflows/\" + flow;\n    msg.Body = \"Delete the Flow\";\n    RMSCleanUP = 1;\n    return msg;\n}\n\nfunction RMSChangeRequestStatus (path) {\n    $.log(counter + \" Monitor Change Request Value path \" + path, $.logSeverity.INFO, \"30001\", path);\n    var msg = {};\n    msg.Attributes = {};\n    msg.Attributes[\"openapi.method\"]=\"GET\";\n    msg.Attributes[\"openapi.header_params.x-requested-with\"] = \"Fetch\";\n    msg.Attributes[\"openapi.path_pattern\"] = \"/app/rms\" + path;\n//    msg.Attributes[\"openapi.path_pattern\"] = \"/api/dt/v1/replicationflows/OPTANE_S4_CDS_DL_FULL/changerequeststatus\";\n    msg.Body = {\"Get Change Request Status # \": counter};\n    return msg;\n}\n\nfunction RMSLoad () {\n    $.log(counter + \" RMS Initial Load Started \", $.logSeverity.INFO, \"50001\");\n    var msg = {};\n    msg.Attributes = {};\n    msg.Attributes[\"openapi.method\"]=\"PUT\";\n    msg.Attributes[\"openapi.header_params.x-requested-with\"] = \"Fetch\";\n    msg.Attributes[\"openapi.query_params.requestType\"] = \"RUN_OR_RESUME_ALL_INACTIVE_TASKS\";\n    msg.Attributes[\"openapi.path_pattern\"] = \"/app/rms/api/dt/v1/replicationflows/\" + flow;\n//    msg.Attributes[\"openapi.path_pattern\"] = \"/app/rms/api/dt/v1/replicationflows/OPTANE_S4_CDS_DL_FULL\";\n    RMSLoadStarted = 1;\n    return msg;\n}\n\n\nfunction do1Tick(ctx) {\n    counter++;\n    if (counter == 1)\n        $.output(RMSClean());\n        $.removeTimer(timerId);\n}\n\nfunction onInput(ctx,s) {\n    counter++;\n    var msg = {}; \n    msg.Attributes = {};\n    var inbody = s.Body;\n    var inHead = s.Attributes;\n\n    inHead = JSON.stringify(inHead);\n\n    if (isByteArray(inbody)) {\n        inbody = String.fromCharCode.apply(null, inbody);\n    }\n    \n    // Log Previous API call    \n     $.log(counter + \" openapi.status_code, expecting 202 or 200, received \" + s.Attributes[\"openapi.status_code\"], $.logSeverity.INFO, \"10001\");\n     $.log(counter + \" Message Headers Response \" + inHead,  $.logSeverity.INFO, \"10002\", inHead);\n     $.log(counter + \" RMSCleanUP \" + RMSCleanUP + \" \" + flow, $.logSeverity.INFO, \"10003\", inbody);\n     $.log(counter + \" RMSLoadStarted \" + RMSLoadStarted, $.logSeverity.INFO, \"10004\", inbody);\n\n     // Prevent over calling API - Stop after 100 attempts\n    if (counter == 100) {\n        $.log(counter + \" Aborting after 100 Monioring Calls\", $.logSeverity.INFO, \"20000\");\n        $.fail(\"openapi.status_code, last status received \" + s.Attributes[\"openapi.status_code\"] + \" response body \" + inbody);\n    }    \n    inbody = JSON.parse(inbody);\n    if (inbody[\"url\"] !== undefined ) {\n        APIPath = inbody[\"url\"];\n        $.log(counter + \" Message Body APIPath \" + APIPath, $.logSeverity.INFO, \"30001\", APIPath);\n    }\n    \n    var APIStatus = inbody[\"status\"];\n    $.log(counter + \" API Status \" + APIStatus, $.logSeverity.INFO, \"20000\");\n       // Start Load when Cleanup Complete\n    if (RMSLoadStarted === 0 && APIStatus == 'COMPLETED') {\n         $.output(RMSLoad());\n     }\n     // Stop Pipeline Gracefully when Load has been triggered\n     else if (RMSLoadStarted == 1)  {\n         $.log(counter + \" API Status \" + APIStatus + \" RMS Load Started \", $.logSeverity.INFO, \"60001\");\n         $.end(msg);\n         $.done();\n     }\n      // check request status, stop or abort pipeline\n     else if ((s.Attributes[\"openapi.status_code\"] == '202' &&  APIPath !== undefined ) ||  APIStatus !== 'COMPLETED') {\n         $.output(RMSChangeRequestStatus(APIPath)); \n     }\n     else {\n        inbody = JSON.stringify(inbody); \n        $.fail(\"openapi.status_code, expecting 202, received \" + s.Attributes[\"openapi.status_code\"] + \" response body \" + inbody);\n     }\n         \n}",
+					"flowname": "${flowname}"
+				},
+				"additionalinports": [
+					{
+						"name": "input",
+						"type": "message"
+					}
+				],
+				"additionaloutports": [
+					{
+						"name": "output",
+						"type": "message"
+					},
+					{
+						"name": "end",
+						"type": "message"
+					}
+				]
+			}
+		},
+		"graphterminator1": {
+			"component": "com.sap.util.graphTerminator",
+			"metadata": {
+				"label": "Graph Terminator",
+				"x": 60,
+				"y": 70,
+				"height": 80,
+				"width": 120,
+				"generation": 1,
+				"config": {}
+			}
+		}
+	},
+	"groups": [],
+	"connections": [
+		{
+			"metadata": {
+				"points": "189,-8 239,-8 239,-63 -190,-63 -190,-8 -140,-8"
+			},
+			"src": {
+				"port": "out",
+				"process": "openapiclient1"
+			},
+			"tgt": {
+				"port": "input",
+				"process": "blankjsoperator1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "-11,-17 24.5,-17 24.5,-8 60,-8"
+			},
+			"src": {
+				"port": "output",
+				"process": "blankjsoperator1"
+			},
+			"tgt": {
+				"port": "in",
+				"process": "openapiclient1"
+			}
+		},
+		{
+			"metadata": {
+				"points": "-11,1 22,1 22,110 55,110"
+			},
+			"src": {
+				"port": "end",
+				"process": "blankjsoperator1"
+			},
+			"tgt": {
+				"port": "stop",
+				"process": "graphterminator1"
+			}
+		}
+	],
+	"inports": {},
+	"outports": {}
+}
